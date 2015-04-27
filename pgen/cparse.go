@@ -25,7 +25,11 @@ var (
 )
 
 func parseFile(thisDir string, file string) (*ast.File, error) {
-	return parser.ParseFile(fset, filepath.Join(thisDir, file), nil, parser.ParseComments)
+	f, err := parser.ParseFile(fset, filepath.Join(thisDir, file), nil, parser.ParseComments)
+	if err != nil {
+		return f, err
+	}
+	return f, nil
 }
 
 func parseDeriv() error {
@@ -62,8 +66,27 @@ func (i idReplacer) Visit(n ast.Node) ast.Visitor {
 	return i
 }
 
+type idMatcher struct {
+	old string
+	to  string
+}
+
+func (i *idMatcher) Visit(n ast.Node) ast.Visitor {
+	if id, ok := n.(*ast.Ident); ok && id.Name == i.old {
+		id.Name = i.to
+	}
+	return i
+}
+
 func SetParseDir(dir string) {
 	thisDir = dir
+}
+
+func replaceIds(f *ast.File, fname string) {
+	rep := idReplacer(fname)
+	for _, d := range f.Decls {
+		ast.Walk(rep, d)
+	}
 }
 
 func WriteDerivImpl(w io.Writer, fname string, pkg string) error {
@@ -72,10 +95,7 @@ func WriteDerivImpl(w io.Writer, fname string, pkg string) error {
 			return err
 		}
 	}
-	rep := idReplacer(fname)
-	for _, d := range derivFile.Decls {
-		ast.Walk(rep, d)
-	}
+	replaceIds(derivFile, fname)
 	derivFile.Name.Name = pkg
 	return printer.Fprint(w, fset, derivFile)
 }
@@ -86,10 +106,56 @@ func WriteRootFindImpl(w io.Writer, fname string, pkg string) error {
 			return err
 		}
 	}
-	rep := idReplacer(fname)
-	for _, d := range rfindFile.Decls {
-		ast.Walk(rep, d)
-	}
+	replaceIds(rfindFile, fname)
 	rfindFile.Name.Name = pkg
 	return printer.Fprint(w, fset, rfindFile)
+}
+
+func WriteRombergImpl(w io.Writer, fname string, pkg string) error {
+	if integFile == nil {
+		if err := parseInteg(); err != nil {
+			return err
+		}
+	}
+	replaceIds(integFile, fname)
+	integFile.Name.Name = pkg
+	if err := printer.Fprint(w, fset, integFile); err != nil {
+		return err
+	}
+	// now we need to do implement the new 'trans' and 'transIntegral'
+	// functions
+
+	// replace find decl for __trap; replace calls to __ff
+	// with calls to __ftrans, then print the node
+	trapname := fname + "trap"
+	for _, d := range integFile.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == trapname {
+			fd.Name.Name = fname + "transtrap"
+
+			// replace calls to 'fname' with 'fname'+'ftrans'
+			ast.Walk(&idMatcher{old: fname, to: fname + "ftrans"}, fd.Body)
+			io.WriteString(w, "\n\n")
+			if err := printer.Fprint(w, fset, fd); err != nil {
+				return err
+			}
+			break
+		}
+	}
+
+	// implement __transIntegral
+	integname := fname + "Integral"
+	for _, d := range integFile.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == integname {
+			fd.Name.Name = fname + "transIntegral"
+
+			// replace calls to __trap with calls to __transtrap
+			ast.Walk(&idMatcher{old: fname + "trap", to: fname + "transtrap"}, fd.Body)
+			io.WriteString(w, "\n\n")
+			if err := printer.Fprint(w, fset, fd); err != nil {
+				return err
+			}
+			break
+		}
+	}
+	return nil
 }

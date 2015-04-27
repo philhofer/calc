@@ -1,13 +1,15 @@
 
-tests/cube_deriv.go tests/cube_root.go:
+testfiles = tests/cube_deriv.go tests/cube_root.go tests/cube_integral.go tests/cube_math.go
+
+$(testfiles):
 	@go install
 	@go generate ./...
 
-test: tests/cube_deriv.go tests/cube_root.go
+test: $(testfiles)
 	@go test ./tests
 
-bench: tests/cube_deriv.go tests/cube_root.go
+bench: $(testfiles)
 	@go test ./tests -bench .
 
 clean:
-	$(RM) tests/cube_deriv.go tests/cube_root.go
+	$(RM) $(testfiles)

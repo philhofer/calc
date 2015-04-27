@@ -3,12 +3,10 @@ package calc
 import "math"
 
 const (
-	__romK   = 10     // Romberg steps
+	__romK   = 8      // Romberg steps (time complexity goes by O(steps * 2^steps))
 	__romAcc = 10E-16 // accuracy
 )
 
-// this gets compiled twice; once for 'ff' and
-// once with 'ftrans'
 func __trap(a float64, b float64, n int) float64 {
 	if n == 0 {
 		return a
@@ -26,7 +24,7 @@ func __trap(a float64, b float64, n int) float64 {
 	}
 	last := __ff(a)
 
-	return (first + (2 * middle) + last) * (h / 2.0)
+	return (first + (2 * middle) + last) * (h / 2)
 }
 
 func __Integral(a float64, b float64) (float64, bool) {
@@ -61,8 +59,7 @@ func __Integral(a float64, b float64) (float64, bool) {
 
 	for k := 1; k < __romK; k++ {
 		Icur := Ik[:__romK-k]
-		lk := 1 << uint(k)
-		m := lk * lk // 4^(k)
+		m := 1 << (2 * uint(k))
 		for i := range Icur {
 			Icur[i] = (float64(m)*Ip[i+1] - Ip[i]) / float64(m-1)
 		}
@@ -75,14 +72,10 @@ func __Integral(a float64, b float64) (float64, bool) {
 	return Ip[len(Ip)-1], false
 }
 
-// a function x(z) such that (-Inf, +Inf) can be mapped
-// onto (-1, 1)
-func xof(z float64) float64 { return -z / ((z - 1) * (z + 1)) }
-
 func __ftrans(z float64) float64 {
 	zsq := z * z
 	zsm := zsq - 1
-	return __ff(xof(z)) * (zsq + 1) / (zsm * zsm)
+	return __ff(-z/((z-1)*(z+1))) * (zsq + 1) / (zsm * zsm)
 }
 
 func rangeSwap(a float64, b float64) (float64, float64) {
@@ -110,14 +103,24 @@ func __rangeTransform(a float64, b float64) (float64, bool) {
 		a, b = b, a
 		flipped = true
 	}
-	a, b = rangeSwap(a, b)
-	f, ok := __transIntegral(a, b)
+	var anew, bnew float64
+	if a == 0.0 {
+		anew = 0.0
+	} else if math.IsInf(a, -1) {
+		anew = -1.0 + (1E-15)
+	} else {
+		anew = (math.Sqrt(4*a*a+1) - 1.0) / (2 * a)
+	}
+	if b == 0.0 {
+		bnew = 0.0
+	} else if math.IsInf(b, 1) {
+		bnew = 1.0 - (1E-15)
+	} else {
+		bnew = (math.Sqrt(4*b*b+1) - 1.0) / (2 * b)
+	}
+	f, ok := __transIntegral(anew, bnew)
 	if flipped {
 		f *= -1.0
 	}
 	return f, ok
 }
-
-// implemented by code generator; same as Integral, but uses
-// alternate version of 'trap'
-func __transIntegral(a, b float64) (float64, bool) { return 0.0, false }

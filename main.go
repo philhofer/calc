@@ -36,7 +36,7 @@ func main() {
 	newfile := strings.TrimSuffix(gofile, ".go") + "_" + *method + ".go"
 	file, err := os.Create(newfile)
 	if err != nil {
-		fail(err.Error())
+		fail(fmt.Sprintf("os.Create(%s): %s", newfile, err))
 	}
 	defer file.Close()
 	b := bufio.NewWriter(file)
@@ -45,6 +45,8 @@ func main() {
 		err = pgen.WriteDerivImpl(b, *fname, gopkg)
 	case "root":
 		err = pgen.WriteRootFindImpl(b, *fname, gopkg)
+	case "integral":
+		err = pgen.WriteRombergImpl(b, *fname, gopkg)
 	default:
 		err = fmt.Errorf("no method named %q available to generate", *method)
 	}
@@ -54,6 +56,6 @@ func main() {
 	if err != nil {
 		file.Close()
 		os.Remove(newfile)
-		fail(err.Error())
+		fail(fmt.Sprintf("while writing implementation: %s", err))
 	}
 }
